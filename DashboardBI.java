@@ -20,6 +20,12 @@ public class DashboardBI extends JFrame {
     private JLabel lblTotalRegistros, lblTiempoPantallaPromedio, lblPredictivoBurnout;
     private PanelGraficoBarras panelBarras;
     private PanelGraficoPastel panelPastel;
+    private PanelEncuestaPersonal panelEncuesta;
+    private CardLayout clIzquierdo;
+    private JPanel panelIzquierdo;
+
+    private static final String CARD_GRAFICO = "GRAFICO";
+    private static final String CARD_ENCUESTA = "ENCUESTA";
 
     // ============================================================
     // PALETA DE DISEÑO — Dark Mode Premium (estilo Power BI / SaaS)
@@ -399,9 +405,18 @@ public class DashboardBI extends JFrame {
         contenedorGraficos.setOpaque(false);
 
         panelBarras = new PanelGraficoBarras();
+        panelEncuesta = new PanelEncuestaPersonal();
         panelPastel = new PanelGraficoPastel();
 
-        contenedorGraficos.add(panelBarras);
+        // El slot izquierdo alterna entre el gráfico agregado (solo vista "TODAS")
+        // y la encuesta interactiva de autoevaluación (cuando se filtra una plataforma).
+        clIzquierdo = new CardLayout();
+        panelIzquierdo = new JPanel(clIzquierdo);
+        panelIzquierdo.setOpaque(false);
+        panelIzquierdo.add(panelBarras, CARD_GRAFICO);
+        panelIzquierdo.add(panelEncuesta, CARD_ENCUESTA);
+
+        contenedorGraficos.add(panelIzquierdo);
         contenedorGraficos.add(panelPastel);
         return contenedorGraficos;
     }
@@ -589,6 +604,16 @@ public class DashboardBI extends JFrame {
 
         panelBarras.repaint();
         panelPastel.repaint();
+
+        // D. El gráfico agregado de productividad solo tiene sentido en la vista
+        // "TODAS". Al filtrar por una plataforma específica, se reemplaza por una
+        // encuesta interactiva que calcula un riesgo de adicción personalizado.
+        if (plataformaSeleccionada.equals("TODAS")) {
+            clIzquierdo.show(panelIzquierdo, CARD_GRAFICO);
+        } else {
+            panelEncuesta.configurarPlataforma(plataformaSeleccionada);
+            clIzquierdo.show(panelIzquierdo, CARD_ENCUESTA);
+        }
     }
 
     // ================================================================
@@ -751,6 +776,315 @@ public class DashboardBI extends JFrame {
                 g2.setColor(COLOR_TEXTO_MUTED);
                 g2.setFont(new Font("Segoe UI", Font.PLAIN, 11));
                 g2.drawString(String.format("%.1f%%", porcentaje), xLeyenda + 22, yLeyenda + (i * 30) + 26);
+            }
+        }
+    }
+
+    // ================================================================
+    // LIENZO IZQUIERDO (alternativo): encuesta interactiva de autoevaluación
+    // Se muestra cuando el usuario filtra por una plataforma específica.
+    // Pide datos reales de uso y calcula un riesgo de adicción personalizado,
+    // en lugar de repetir el mismo gráfico agregado para todas las plataformas.
+    // ================================================================
+    private class PanelEncuestaPersonal extends RoundedPanel {
+
+        private String plataformaActual = "";
+
+        private JLabel lblTitulo;
+        private JLabel lblSubtitulo;
+
+        private JSpinner spHorasUso;
+        private JSpinner spAperturas;
+        private JSpinner spHorasSueno;
+        private JSlider sliderBienestar;
+        private JLabel lblValorBienestar;
+        private JComboBox<String> cbAnsiedad;
+
+        private JLabel lblPorcentajeResultado;
+        private JLabel lblCategoriaResultado;
+        private JProgressBar barraRiesgo;
+        private JLabel lblDetalleResultado;
+
+        public PanelEncuestaPersonal() {
+            super(16, COLOR_CARD_BG, COLOR_CARD_BORDE);
+            setLayout(new BorderLayout(0, 12));
+            setBorder(new EmptyBorder(22, 26, 20, 26));
+            construirContenido();
+        }
+
+        private void construirContenido() {
+            // --- Encabezado ---
+            JPanel encabezado = new JPanel();
+            encabezado.setOpaque(false);
+            encabezado.setLayout(new BoxLayout(encabezado, BoxLayout.Y_AXIS));
+
+            lblTitulo = new JLabel("Autoevaluación de Uso");
+            lblTitulo.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            lblTitulo.setForeground(COLOR_TEXTO_BLANCO);
+            lblTitulo.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            lblSubtitulo = new JLabel("Ingresa tus datos reales para estimar tu riesgo personal");
+            lblSubtitulo.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+            lblSubtitulo.setForeground(COLOR_TEXTO_MUTED);
+            lblSubtitulo.setAlignmentX(Component.LEFT_ALIGNMENT);
+            lblSubtitulo.setBorder(new EmptyBorder(4, 0, 0, 0));
+
+            encabezado.add(lblTitulo);
+            encabezado.add(lblSubtitulo);
+
+            // --- Formulario ---
+            spHorasUso = new JSpinner(new SpinnerNumberModel(2.0, 0.0, 24.0, 0.5));
+            spAperturas = new JSpinner(new SpinnerNumberModel(20, 0, 300, 5));
+            spHorasSueno = new JSpinner(new SpinnerNumberModel(7.0, 0.0, 12.0, 0.5));
+            estilizarSpinner(spHorasUso);
+            estilizarSpinner(spAperturas);
+            estilizarSpinner(spHorasSueno);
+
+            sliderBienestar = new JSlider(1, 10, 6);
+            sliderBienestar.setOpaque(false);
+            lblValorBienestar = new JLabel("6 / 10");
+            lblValorBienestar.setFont(new Font("Segoe UI", Font.BOLD, 11));
+            lblValorBienestar.setForeground(COLOR_ACCENT);
+            sliderBienestar.addChangeListener(e -> lblValorBienestar.setText(sliderBienestar.getValue() + " / 10"));
+
+            cbAnsiedad = new JComboBox<>(new String[]{"No", "A veces", "Sí, frecuentemente"});
+            estilizarComboBox(cbAnsiedad);
+
+            JPanel formulario = new JPanel();
+            formulario.setOpaque(false);
+            formulario.setLayout(new BoxLayout(formulario, BoxLayout.Y_AXIS));
+            formulario.setBorder(new EmptyBorder(10, 0, 0, 0));
+
+            formulario.add(crearCampoConEtiqueta("Horas promedio de uso diario", spHorasUso));
+            formulario.add(Box.createVerticalStrut(10));
+            formulario.add(crearCampoConEtiqueta("Veces que abres la app al día", spAperturas));
+            formulario.add(Box.createVerticalStrut(10));
+            formulario.add(crearCampoConEtiqueta("Horas de sueño promedio", spHorasSueno));
+            formulario.add(Box.createVerticalStrut(10));
+
+            JPanel filaBienestar = new JPanel(new BorderLayout(8, 2));
+            filaBienestar.setOpaque(false);
+            filaBienestar.setAlignmentX(Component.LEFT_ALIGNMENT);
+            JLabel lblEtiquetaBienestar = new JLabel("Nivel de bienestar mental percibido");
+            lblEtiquetaBienestar.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+            lblEtiquetaBienestar.setForeground(COLOR_TEXTO_MUTED);
+            JPanel filaSlider = new JPanel(new BorderLayout(8, 0));
+            filaSlider.setOpaque(false);
+            filaSlider.add(sliderBienestar, BorderLayout.CENTER);
+            filaSlider.add(lblValorBienestar, BorderLayout.EAST);
+            filaBienestar.add(lblEtiquetaBienestar, BorderLayout.NORTH);
+            filaBienestar.add(filaSlider, BorderLayout.CENTER);
+            formulario.add(filaBienestar);
+            formulario.add(Box.createVerticalStrut(10));
+
+            formulario.add(crearCampoConEtiqueta("¿Sientes ansiedad si no puedes revisarla?", cbAnsiedad));
+
+            JButton btnCalcular = construirBotonCalcular();
+            JPanel filaBoton = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            filaBoton.setOpaque(false);
+            filaBoton.setBorder(new EmptyBorder(16, 0, 0, 0));
+            filaBoton.add(btnCalcular);
+            formulario.add(filaBoton);
+
+            // --- Resultado ---
+            JPanel panelResultado = new JPanel();
+            panelResultado.setOpaque(false);
+            panelResultado.setLayout(new BoxLayout(panelResultado, BoxLayout.Y_AXIS));
+            panelResultado.setBorder(new EmptyBorder(16, 0, 0, 0));
+
+            lblPorcentajeResultado = new JLabel(" ");
+            lblPorcentajeResultado.setFont(new Font("Segoe UI", Font.BOLD, 26));
+            lblPorcentajeResultado.setForeground(COLOR_TEXTO_BLANCO);
+            lblPorcentajeResultado.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            lblCategoriaResultado = new JLabel(" ");
+            lblCategoriaResultado.setFont(new Font("Segoe UI", Font.BOLD, 11));
+            lblCategoriaResultado.setForeground(COLOR_TEXTO_MUTED);
+            lblCategoriaResultado.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            barraRiesgo = new JProgressBar(0, 100);
+            barraRiesgo.setValue(0);
+            barraRiesgo.setStringPainted(false);
+            barraRiesgo.setBackground(new Color(38, 44, 70));
+            barraRiesgo.setForeground(COLOR_ACCENT);
+            barraRiesgo.setBorderPainted(false);
+            barraRiesgo.setPreferredSize(new Dimension(10, 8));
+            barraRiesgo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 8));
+            barraRiesgo.setAlignmentX(Component.LEFT_ALIGNMENT);
+            barraRiesgo.setBorder(new EmptyBorder(6, 0, 6, 0));
+
+            lblDetalleResultado = new JLabel(" ");
+            lblDetalleResultado.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+            lblDetalleResultado.setForeground(COLOR_TEXTO_MUTED);
+            lblDetalleResultado.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            panelResultado.add(lblPorcentajeResultado);
+            panelResultado.add(lblCategoriaResultado);
+            panelResultado.add(barraRiesgo);
+            panelResultado.add(lblDetalleResultado);
+
+            JPanel cuerpo = new JPanel();
+            cuerpo.setOpaque(false);
+            cuerpo.setLayout(new BoxLayout(cuerpo, BoxLayout.Y_AXIS));
+            cuerpo.add(formulario);
+            cuerpo.add(panelResultado);
+
+            add(encabezado, BorderLayout.NORTH);
+            add(cuerpo, BorderLayout.CENTER);
+
+            btnCalcular.addActionListener(e -> calcularRiesgoPersonal());
+        }
+
+        private JPanel crearCampoConEtiqueta(String etiqueta, JComponent campo) {
+            JPanel fila = new JPanel(new BorderLayout(0, 4));
+            fila.setOpaque(false);
+            fila.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            JLabel lbl = new JLabel(etiqueta);
+            lbl.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+            lbl.setForeground(COLOR_TEXTO_MUTED);
+
+            fila.add(lbl, BorderLayout.NORTH);
+            fila.add(campo, BorderLayout.CENTER);
+            return fila;
+        }
+
+        private void estilizarSpinner(JSpinner spinner) {
+            spinner.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            spinner.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(COLOR_CARD_BORDE, 1, true),
+                new EmptyBorder(2, 6, 2, 6)
+            ));
+            JComponent editor = spinner.getEditor();
+            if (editor instanceof JSpinner.DefaultEditor) {
+                JFormattedTextField campoTexto = ((JSpinner.DefaultEditor) editor).getTextField();
+                campoTexto.setBackground(COLOR_CARD_BG);
+                campoTexto.setForeground(COLOR_TEXTO_BLANCO);
+                campoTexto.setCaretColor(COLOR_TEXTO_BLANCO);
+                campoTexto.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+            }
+            spinner.setOpaque(true);
+        }
+
+        private JButton construirBotonCalcular() {
+            JButton btn = new JButton("Calcular riesgo de adicción") {
+                @Override
+                protected void paintComponent(Graphics g) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    if (getModel().isRollover()) {
+                        g2.setPaint(new GradientPaint(0, 0, COLOR_ACCENT_2, getWidth(), 0, COLOR_ACCENT));
+                    } else {
+                        g2.setPaint(new GradientPaint(0, 0, COLOR_ACCENT, getWidth(), 0, COLOR_ACCENT_2));
+                    }
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                    g2.setColor(Color.WHITE);
+                    FontMetrics fm = g2.getFontMetrics(getFont());
+                    int tx = (getWidth() - fm.stringWidth(getText())) / 2;
+                    int ty = (getHeight() + fm.getAscent()) / 2 - 2;
+                    g2.setFont(getFont());
+                    g2.drawString(getText(), tx, ty);
+                    g2.dispose();
+                }
+            };
+            btn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            btn.setPreferredSize(new Dimension(230, 36));
+            btn.setContentAreaFilled(false);
+            btn.setFocusPainted(false);
+            btn.setBorderPainted(false);
+            btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            return btn;
+        }
+
+        // Actualiza los textos de la encuesta para la plataforma filtrada y
+        // limpia el resultado previo, ya que el riesgo es específico por app.
+        public void configurarPlataforma(String plataforma) {
+            this.plataformaActual = plataforma;
+            lblTitulo.setText("Autoevaluación de Uso — " + plataforma);
+            lblSubtitulo.setText("Responde con tus datos reales en " + plataforma + " para estimar tu riesgo personal");
+            lblPorcentajeResultado.setText(" ");
+            lblCategoriaResultado.setText(" ");
+            lblDetalleResultado.setText(" ");
+            barraRiesgo.setValue(0);
+            revalidate();
+            repaint();
+        }
+
+        // Calcula un riesgo de adicción personalizado con un modelo logístico
+        // similar en espíritu al KPI agregado, pero alimentado por los datos
+        // que el propio usuario ingresa para la plataforma seleccionada.
+        private void calcularRiesgoPersonal() {
+            double horasUso = ((Number) spHorasUso.getValue()).doubleValue();
+            int aperturas = ((Number) spAperturas.getValue()).intValue();
+            double horasSueno = ((Number) spHorasSueno.getValue()).doubleValue();
+            int bienestar = sliderBienestar.getValue();
+            String ansiedad = (String) cbAnsiedad.getSelectedItem();
+
+            double factorAnsiedad;
+            if ("Sí, frecuentemente".equals(ansiedad)) factorAnsiedad = 1.4;
+            else if ("A veces".equals(ansiedad)) factorAnsiedad = 0.6;
+            else factorAnsiedad = 0.0;
+
+            double pesoHoras = 0.42;
+            double pesoAperturas = 0.018;
+            double pesoSueno = -0.30;
+            double pesoBienestar = -0.35;
+            double intercepto = -2.6;
+
+            double z = (horasUso * pesoHoras)
+                     + (aperturas * pesoAperturas)
+                     + (horasSueno * pesoSueno)
+                     + ((10 - bienestar) * pesoBienestar)
+                     + factorAnsiedad
+                     + intercepto;
+
+            if (plataformaActual.equalsIgnoreCase("TIKTOK")) z += 0.35;
+            else if (plataformaActual.equalsIgnoreCase("INSTAGRAM")) z += 0.20;
+            else if (plataformaActual.equalsIgnoreCase("YOUTUBE")) z -= 0.15;
+
+            double probabilidad = (1.0 / (1.0 + Math.exp(-z))) * 100.0;
+            probabilidad = Math.min(97.0, Math.max(3.0, probabilidad));
+
+            String categoria;
+            Color colorCategoria;
+            if (probabilidad < 33) {
+                categoria = "RIESGO BAJO";
+                colorCategoria = new Color(67, 233, 123);
+            } else if (probabilidad < 66) {
+                categoria = "RIESGO MODERADO";
+                colorCategoria = new Color(255, 186, 8);
+            } else {
+                categoria = "RIESGO ALTO";
+                colorCategoria = COLOR_DANGER;
+            }
+
+            lblPorcentajeResultado.setText(String.format("%.1f%%", probabilidad));
+            lblPorcentajeResultado.setForeground(colorCategoria);
+            lblCategoriaResultado.setText(categoria + " DE ADICCIÓN EN " + plataformaActual.toUpperCase());
+            lblCategoriaResultado.setForeground(colorCategoria);
+
+            barraRiesgo.setValue((int) Math.round(probabilidad));
+            barraRiesgo.setForeground(colorCategoria);
+
+            lblDetalleResultado.setText("<html><body style='width:230px'>"
+                + generarMensaje(probabilidad, horasUso, horasSueno) + "</body></html>");
+
+            revalidate();
+            repaint();
+        }
+
+        private String generarMensaje(double probabilidad, double horasUso, double horasSueno) {
+            if (probabilidad < 33) {
+                return "Tu patrón de uso actual parece equilibrado. Mantén pausas activas y un buen descanso.";
+            } else if (probabilidad < 66) {
+                return "Se observan señales de uso elevado (" + String.format("%.1f", horasUso)
+                    + " hrs/día). Considera establecer límites de tiempo en pantalla.";
+            } else {
+                String notaSueno = horasSueno < 6
+                    ? " El bajo descanso (" + String.format("%.1f", horasSueno) + " hrs) puede estar agravando el efecto."
+                    : "";
+                return "Tu patrón sugiere un riesgo alto." + notaSueno
+                    + " Considera reducir notificaciones y tiempo de pantalla, o buscar apoyo si lo sientes necesario.";
             }
         }
     }
