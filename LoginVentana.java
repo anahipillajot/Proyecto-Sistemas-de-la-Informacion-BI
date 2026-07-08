@@ -493,7 +493,7 @@ public class LoginVentana extends JFrame {
                     JOptionPane.showMessageDialog(this, "¡Acceso verificado con éxito!\nRol asignado: " + nombreRol, "Sistema de Seguridad BI", JOptionPane.INFORMATION_MESSAGE);
 
                     this.dispose();
-                    new DashboardBI().setVisible(true);
+                    new DashboardBI(usuario, nombreRol).setVisible(true);
                     // Próximo paso: Abrir ventana de BI pasando el Rol del usuario
 
                 } else {
